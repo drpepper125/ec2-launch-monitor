@@ -37,17 +37,33 @@ ts_cdk/
 - **CloudWatch Event Rule**: Monitors AWS API calls for EC2 `RunInstances` events
 - **IAM Roles & Policies**: Secure permissions for Lambda to access EC2 and CloudWatch Logs
 
+### Lambda Function Details
+
+The Python Lambda function (`lambda/index.py`) performs the following operations when triggered:
+
+1. **Event Processing**: Receives CloudWatch Events containing EC2 launch details
+2. **Instance ID Extraction**: Parses the event to extract launched instance IDs
+3. **Instance Detail Retrieval**: Uses AWS EC2 API to fetch detailed information about the instances
+4. **Account Context**: Retrieves the AWS account ID for context
+5. **Structured Logging**: Logs all operations for monitoring and debugging
+6. **Response Formation**: Returns structured data with instance IDs and details
+
+#### Lambda Function Capabilities:
+- ✅ **Event Parsing**: Extracts instance IDs from CloudWatch Events
+- ✅ **EC2 API Integration**: Fetches instance details (IP addresses, metadata)
+- ✅ **Account Identification**: Determines which AWS account triggered the event
+- ✅ **Error Handling**: Graceful handling of malformed events or API failures
+- ✅ **Structured Logging**: Comprehensive logging for troubleshooting
+- ✅ **JSON Response**: Returns structured data for downstream processing
+
 ### Event Flow
 
-1. User launches an EC2 instance
+1. User launches an EC2 instance via AWS Console, CLI, or API
 2. CloudTrail captures the `RunInstances` API call
-3. CloudWatch Events rule detects the event
-4. Lambda function is triggered automatically
-5. Function processes the event and can perform actions like:
-   - Logging instance details
-   - Sending notifications
-   - Applying tags or compliance policies
-   - Validating security configurations
+3. CloudWatch Events rule detects the event pattern
+4. Lambda function is triggered automatically with event details
+5. Function extracts instance IDs and fetches detailed information
+6. Logs activity and returns structured response for monitoring
 
 ## 🛠️ Prerequisites
 
@@ -104,6 +120,31 @@ cdk diff
 - `cdk destroy` - Remove the stack
 
 ## 🧪 Testing
+
+### Lambda Function Code Structure
+
+The Lambda function is organized into several helper functions:
+
+```python
+# Core Functions:
+- handler(event, context)           # Main entry point
+- extract_event_details(event)      # Parses CloudWatch event for instance IDs
+- get_instance_details(instance_ids) # Fetches EC2 instance information
+- get_account_id()                  # Retrieves current AWS account ID
+```
+
+**Sample Response Structure:**
+```json
+{
+  "statusCode": 200,
+  "body": {
+    "instance_ids": ["i-1234567890abcdef0"],
+    "instances": {
+      "i-1234567890abcdef0": "10.0.1.25"
+    }
+  }
+}
+```
 
 ### Test Lambda Function Locally
 
