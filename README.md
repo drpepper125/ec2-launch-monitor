@@ -33,28 +33,29 @@ ts_cdk/
 
 ### Infrastructure Components
 
-- **Lambda Function**: Python-based serverless function that processes EC2 launch events
+- **Lambda Function**: Python-based serverless function that processes EC2 launch events with tag filtering
 - **CloudWatch Event Rule**: Monitors AWS API calls for EC2 `RunInstances` events
 - **IAM Roles & Policies**: Secure permissions for Lambda to access EC2 and CloudWatch Logs
 
 ### Lambda Function Details
 
-The Python Lambda function (`lambda/index.py`) performs the following operations when triggered:
+The Python Lambda function (`lambda/index.py`) performs efficient, single-pass processing:
 
 1. **Event Processing**: Receives CloudWatch Events containing EC2 launch details
-2. **Instance ID Extraction**: Parses the event to extract launched instance IDs
-3. **Instance Detail Retrieval**: Uses AWS EC2 API to fetch detailed information about the instances
-4. **Account Context**: Retrieves the AWS account ID for context
-5. **Structured Logging**: Logs all operations for monitoring and debugging
-6. **Response Formation**: Returns structured data with instance IDs and details
+2. **Instance ID Extraction**: Parses the event to extract launched instance IDs  
+3. **Tag-Based Filtering**: Checks instances for the `adhoc=true` tag in a single AWS API call
+4. **Selective Processing**: Only processes instances that have the required tag
+5. **Structured Response**: Returns tagged instances with their private IP addresses
+6. **Comprehensive Logging**: Detailed CloudWatch logs for monitoring and debugging
 
 #### Lambda Function Capabilities:
-- ✅ **Event Parsing**: Extracts instance IDs from CloudWatch Events
-- ✅ **EC2 API Integration**: Fetches instance details (IP addresses, metadata)
-- ✅ **Account Identification**: Determines which AWS account triggered the event
+- ✅ **Efficient Processing**: Single AWS API call with O(n) complexity
+- ✅ **Tag-Based Filtering**: Only processes instances with `adhoc=true` tag
+- ✅ **Instance Data**: Returns instance IDs mapped to private IP addresses
+- ✅ **Account Context**: Identifies which AWS account triggered the event
 - ✅ **Error Handling**: Graceful handling of malformed events or API failures
-- ✅ **Structured Logging**: Comprehensive logging for troubleshooting
-- ✅ **JSON Response**: Returns structured data for downstream processing
+- ✅ **Performance Optimized**: AWS client reuse for faster Lambda execution
+- ✅ **Comprehensive Metrics**: Processing summaries and counts
 
 ### Event Flow
 
@@ -62,8 +63,9 @@ The Python Lambda function (`lambda/index.py`) performs the following operations
 2. CloudTrail captures the `RunInstances` API call
 3. CloudWatch Events rule detects the event pattern
 4. Lambda function is triggered automatically with event details
-5. Function extracts instance IDs and fetches detailed information
-6. Logs activity and returns structured response for monitoring
+5. Function checks launched instances for the `adhoc=true` tag
+6. Returns only tagged instances with their private IP addresses
+7. Comprehensive logging in CloudWatch for monitoring and debugging
 
 ## 🛠️ Prerequisites
 
@@ -123,27 +125,50 @@ cdk diff
 
 ### Lambda Function Code Structure
 
-The Lambda function is organized into several helper functions:
+The Lambda function is organized into efficient, single-purpose functions:
 
 ```python
 # Core Functions:
-- handler(event, context)           # Main entry point
-- extract_event_details(event)      # Parses CloudWatch event for instance IDs
-- get_instance_details(instance_ids) # Fetches EC2 instance information
-- get_account_id()                  # Retrieves current AWS account ID
+- handler(event, context)              # Main entry point with error handling
+- extract_event_details(event)         # Parses CloudWatch event for instance IDs
+- process_tagged_instances(instance_ids) # Single-pass tag checking and data extraction
+- get_account_id()                     # Retrieves current AWS account ID
 ```
 
-**Sample Response Structure:**
+**Sample Success Response:**
 ```json
 {
   "statusCode": 200,
   "body": {
-    "instance_ids": ["i-1234567890abcdef0"],
-    "instances": {
-      "i-1234567890abcdef0": "10.0.1.25"
+    "message": "Successfully processed 3 instances, found 2 with required tags",
+    "account_id": "123456789012",
+    "summary": {
+      "total_processed": 3,
+      "tagged_count": 2,
+      "untagged_count": 1
+    },
+    "tagged_instances": {
+      "i-1234567890abcdef0": "10.0.1.25",
+      "i-0987654321fedcba0": "10.0.1.26"
     }
   }
 }
+```
+
+**Sample No Tagged Instances Response:**
+```json
+{
+  "statusCode": 404,
+  "body": {
+    "error": "No instances found with required adhoc=true tag",
+    "summary": {
+      "total_processed": 2,
+      "tagged_count": 0,
+      "untagged_count": 2
+    }
+  }
+}
+```
 ```
 
 ### Test Lambda Function Locally
@@ -163,9 +188,29 @@ print(json.dumps(result, indent=2))
 "
 ```
 
-### Test Event Pattern
+## 📊 Monitoring & Logs
 
-The `event-pattern.json` file contains the CloudWatch Events pattern used to filter EC2 launch events.
+### CloudWatch Logs
+Your Lambda function logs will appear in:
+```
+/aws/lambda/DevStack-MyLambdaFunction[random-suffix]
+```
+
+**Sample Log Output:**
+```
+[INFO] Processing EC2 launch event from account: 123456789012
+[INFO] Successfully extracted 2 instance IDs
+[INFO] Processing 2 instances: ['i-123', 'i-456']
+[INFO] Found tagged instance i-123 with IP 10.0.1.25
+[DEBUG] Skipped untagged instance i-456
+[INFO] Processing complete: 1 tagged instances found
+```
+
+### What Gets Logged:
+- ✅ **Event Processing**: Account ID and instance counts
+- ✅ **Tag Checking**: Which instances have required tags
+- ✅ **Results**: Summary of tagged vs untagged instances
+- ✅ **Errors**: API failures or malformed events
 
 ## 🔧 Configuration
 
@@ -188,25 +233,30 @@ export const environments = {
 };
 ```
 
+### Required EC2 Tag
+
+The Lambda function looks for instances with:
+- **Tag Key**: `adhoc`
+- **Tag Value**: `true`
+
+Only instances with this exact tag will be processed and returned.
+
 ### Lambda Function Permissions
 
 The Lambda function has the following permissions:
-- `ec2:RunInstances` - Monitor instance launches
-- `ec2:Describe*` - Query instance details
-- `logs:*` - Write to CloudWatch Logs
-
-## 📊 Monitoring & Logs
-
-- **CloudWatch Logs**: Lambda execution logs available in `/aws/lambda/DevStack-MyLambdaFunction*`
-- **CloudWatch Events**: Monitor event rule metrics in CloudWatch console
-- **X-Ray Tracing**: Can be enabled for detailed Lambda performance insights
+- `ec2:DescribeInstances` - Query instance details and tags
+- `ec2:DescribeInstanceStatus` - Check instance health
+- `ec2:DescribeRegions` - Regional information
+- `ec2:DescribeAvailabilityZones` - AZ information
+- `logs:CreateLogGroup`, `logs:CreateLogStream`, `logs:PutLogEvents` - CloudWatch Logs access
 
 ## 🔒 Security Considerations
 
-- Sensitive configuration is excluded from version control
-- Lambda follows least-privilege access principles
-- CloudWatch Events only trigger on specific EC2 actions
-- All resources are tagged for cost tracking and governance
+- **Sensitive Configuration**: All sensitive files (`config.ts`, `event-pattern.json`) are excluded from version control
+- **Least-Privilege Access**: Lambda has minimal required permissions for EC2 and CloudWatch
+- **Tag-Based Processing**: Only processes instances with specific tags, reducing security exposure
+- **Event-Driven**: Only triggers on specific EC2 launch actions, not all EC2 events
+- **Resource Tagging**: All AWS resources are tagged for cost tracking and governance
 
 ## 🤝 Contributing
 
