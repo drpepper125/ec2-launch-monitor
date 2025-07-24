@@ -1,5 +1,6 @@
 # Configuration files (contains sensitive information)
 config.ts
+event-pattern.json
 
 # Dependencies
 node_modules/
