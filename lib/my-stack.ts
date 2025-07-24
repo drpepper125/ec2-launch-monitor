@@ -30,17 +30,14 @@ export class Ec2LaunchMonitoringStack extends Stack {
     });
 
     ec2_launch_rule.addTarget(new targets.LambdaFunction(myLambda));
-    myLambda.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['ec2:RunInstances'],
-      resources: ['*'],
-    }));
-    
 
+    // Add STS permissions for getting account ID
     myLambda.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents'],
+      actions: ['sts:GetCallerIdentity'],
       resources: ['*']
     }));
 
+    // Add EC2 permissions for describing instances and their details
     myLambda.addToRolePolicy(new iam.PolicyStatement({
       actions: [
         'ec2:DescribeInstances',
