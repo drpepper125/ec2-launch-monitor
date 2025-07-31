@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'EC2 Launch Monitor - Complete deployment with inline Lambda code'
+
+Resources:
+  # IAM Role for Lambda Function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: EC2MonitoringPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sts:GetCallerIdentity
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeInstances
+                  - ec2:DescribeInstanceStatus
+                  - ec2:DescribeRegions
+                  - ec2:DescribeAvailabilityZones
+                Resource: '*'
+
+  # Lambda Function with inline code
+  EC2LaunchMonitorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ec2-launch-monitor
+      Runtime: python3.11
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import json
+          import logging
+          from typing import Dict, List, Optional, Any
+
+          # Configure logging
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+
+          # Initialize AWS clients outside handler for connection reuse
+          ec2_client = boto3.client('ec2')
+          sts_client = boto3.client('sts')
+
+          def get_account_id() -> Optional[str]:
+              """Retrieve the current AWS account ID."""
+              try:
+                  account_id = sts_client.get_caller_identity().get('Account')
+                  return account_id
+              except Exception as e:
+                  logger.error(f"Error retrieving account ID: {e}")
+                  return None
+
+          def extract_event_details(event: Dict[str, Any]) -> List[str]:
+              """Extract instance IDs from CloudWatch Events."""
+              try:
+                  instances = event['detail']['responseElements']['instancesSet']['items']
+                  instance_ids = [instance['instanceId'] for instance in instances]
+                  logger.info(f"Successfully extracted {len(instance_ids)} instance IDs")
+                  return instance_ids
+              except KeyError as e:
+                  logger.error(f"Error extracting instance IDs: Missing key {e}")
+                  return []
+
+          def get_tagged_instances(instance_ids: List[str]) -> List[Dict[str, Any]]:
+              """Get instances with the adhoc=true tag."""
+              try:
+                  response = ec2_client.describe_instances(InstanceIds=instance_ids)
+                  tagged_instances = []
+                  
+                  for reservation in response['Reservations']:
+                      for instance in reservation['Instances']:
+                          tags = {tag['Key']: tag['Value'] for tag in instance.get('Tags', [])}
+                          if tags.get('adhoc') == 'true':
+                              tagged_instances.append({
+                                  'InstanceId': instance['InstanceId'],
+                                  'PrivateIpAddress': instance.get('PrivateIpAddress', 'N/A'),
+                                  'State': instance['State']['Name'],
+                                  'Tags': tags
+                              })
+                  
+                  logger.info(f"Found {len(tagged_instances)} instances with adhoc=true tag")
+                  return tagged_instances
+              except Exception as e:
+                  logger.error(f"Error retrieving tagged instances: {e}")
+                  return []
+
+          def handler(event, context):
+              """Main Lambda handler function."""
+              logger.info(f"Received event: {json.dumps(event, default=str)}")
+              
+              try:
+                  # Extract instance IDs from the event
+                  instance_ids = extract_event_details(event)
+                  if not instance_ids:
+                      return {'statusCode': 200, 'body': 'No instances found in event'}
+                  
+                  # Get account ID
+                  account_id = get_account_id()
+                  
+                  # Filter instances by tag
+                  tagged_instances = get_tagged_instances(instance_ids)
+                  
+                  response = {
+                      'account_id': account_id,
+                      'processed_instances': len(instance_ids),
+                      'tagged_instances': tagged_instances,
+                      'timestamp': context.aws_request_id
+                  }
+                  
+                  logger.info(f"Processing complete: {json.dumps(response, default=str)}")
+                  return {
+                      'statusCode': 200,
+                      'body': json.dumps(response, default=str)
+                  }
+                  
+              except Exception as e:
+                  logger.error(f"Error in handler: {e}")
+                  return {
+                      'statusCode': 500,
+                      'body': json.dumps({'error': str(e)})
+                  }
+      Description: 'Monitors EC2 instance launches and processes events'
+      Timeout: 60
+
+  # CloudWatch Events Rule to detect EC2 launches
+  EC2LaunchRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: ec2-launch-monitor-rule
+      Description: 'Detects when EC2 instances are launched'
+      EventPattern:
+        source:
+          - aws.ec2
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventName:
+            - RunInstances
+          eventSource:
+            - ec2.amazonaws.com
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt EC2LaunchMonitorFunction.Arn
+          Id: EC2LaunchTarget
+
+  # Permission for CloudWatch Events to invoke Lambda
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref EC2LaunchMonitorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EC2LaunchRule.Arn
+
+Outputs:
+  LambdaFunctionArn:
+    Description: 'ARN of the EC2 Launch Monitor Lambda Function'
+    Value: !GetAtt EC2LaunchMonitorFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaFunctionArn'
+    
+  EventRuleArn:
+    Description: 'ARN of the CloudWatch Events Rule'
+    Value: !GetAtt EC2LaunchRule.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-EventRuleArn'
+    
+  IAMRoleArn:
+    Description: 'ARN of the Lambda Execution Role'
+    Value: !GetAtt LambdaExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-IAMRoleArn'

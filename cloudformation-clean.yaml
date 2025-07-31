@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'EC2 Launch Monitor - Serverless monitoring of EC2 instance launches with Lambda function'
+
+Parameters:
+  LambdaCodeBucket:
+    Type: String
+    Description: 'S3 bucket containing the Lambda function code'
+    
+  LambdaCodeKey:
+    Type: String
+    Description: 'S3 key for the Lambda function zip file'
+    Default: 'lambda-code.zip'
+
+Resources:
+  # IAM Role for Lambda Function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: EC2MonitoringPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sts:GetCallerIdentity
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeInstances
+                  - ec2:DescribeInstanceStatus
+                  - ec2:DescribeRegions
+                  - ec2:DescribeAvailabilityZones
+                Resource: '*'
+
+  # Lambda Function
+  EC2LaunchMonitorFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: ec2-launch-monitor
+      Runtime: python3.11
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Description: 'Monitors EC2 instance launches and processes events'
+      Timeout: 60
+
+  # CloudWatch Events Rule to detect EC2 launches
+  EC2LaunchRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: ec2-launch-monitor-rule
+      Description: 'Detects when EC2 instances are launched'
+      EventPattern:
+        source:
+          - aws.ec2
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          eventName:
+            - RunInstances
+          eventSource:
+            - ec2.amazonaws.com
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt EC2LaunchMonitorFunction.Arn
+          Id: EC2LaunchTarget
+
+  # Permission for CloudWatch Events to invoke Lambda
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref EC2LaunchMonitorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EC2LaunchRule.Arn
+
+Outputs:
+  LambdaFunctionArn:
+    Description: 'ARN of the EC2 Launch Monitor Lambda Function'
+    Value: !GetAtt EC2LaunchMonitorFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaFunctionArn'
+    
+  EventRuleArn:
+    Description: 'ARN of the CloudWatch Events Rule'
+    Value: !GetAtt EC2LaunchRule.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-EventRuleArn'
+    
+  IAMRoleArn:
+    Description: 'ARN of the Lambda Execution Role'
+    Value: !GetAtt LambdaExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-IAMRoleArn'
