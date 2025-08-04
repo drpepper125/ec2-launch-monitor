@@ -64,14 +64,6 @@ aws s3 cp src/style.css s3://$static_bucket_name/style.css --region $region --co
 echo "Uploading script.js..."
 aws s3 cp src/script.js s3://$static_bucket_name/script.js --region $region --content-type "application/javascript"
 
-# Upload data folder contents (if exists)
-if [ -d "src/data" ]; then
-    echo "Uploading data folder contents..."
-    aws s3 sync src/data/ s3://$static_bucket_name/data/ --region $region --exclude "*.py"
-else
-    echo "No src/data folder found, skipping data upload"
-fi
-
 # Verify uploads
 echo "Verifying static website uploads..."
 aws s3 ls s3://$static_bucket_name/ --region $region
