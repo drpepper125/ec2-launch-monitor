@@ -13,8 +13,8 @@ Parameters:
 
   AllowedIPAddress:
     Type: String
-    Description: 'Your IP address to allow access (e.g., 203.0.113.0/32)'
-    Default: '107.218.255.235/32'
+    Description: 'Your IP address to allow access (e.g., 203.0.113.0/32). Replace with your actual IP address.'
+    Default: '0.0.0.0/0'  # WARNING: This allows access from anywhere. Replace with your IP!
   
 
 Resources:

@@ -1,5 +1,6 @@
 # Configuration files (contains sensitive information)
 config.ts
+config.env
 event-pattern.json
 
 # Lambda deployment artifacts

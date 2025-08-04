@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# Load configuration
+if [ -f "config.env" ]; then
+    source config.env
+    echo "Loaded configuration from config.env"
+else
+    echo "Warning: config.env not found. Using default values."
+    AWS_REGION="us-east-2"
+fi
+
 echo 'Cleaning up test EC2 instances...'
 
 # Look for any instance ID files
@@ -47,7 +56,7 @@ echo ""
 echo "Terminating instances..."
 aws ec2 terminate-instances \
     --instance-ids "${instance_ids[@]}" \
-    --region us-east-2 \
+    --region $AWS_REGION \
     --query 'TerminatingInstances[].{Instance:InstanceId,State:CurrentState.Name}' \
     --output table
 

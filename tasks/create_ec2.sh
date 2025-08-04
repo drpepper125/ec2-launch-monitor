@@ -1,5 +1,14 @@
 #!/bin/bash
 
+# Load configuration
+if [ -f "config.env" ]; then
+    source config.env
+    echo "Loaded configuration from config.env"
+else
+    echo "Warning: config.env not found. Using default values."
+    AWS_REGION="us-east-2"
+fi
+
 # Default count is 1, but can be overridden
 COUNT=${1:-1}
 
@@ -14,7 +23,7 @@ instance_ids=$(aws ec2 run-instances \
     --image-id ami-08ca1d1e465fbfe0c \
     --instance-type t2.micro \
     --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=ec2-test-$TIMESTAMP},{Key=adhoc,Value=true},{Key=TestBatch,Value=$TIMESTAMP}]" \
-    --region us-east-2 \
+    --region $AWS_REGION \
     --count $COUNT \
     --query 'Instances[].InstanceId' \
     --output text)

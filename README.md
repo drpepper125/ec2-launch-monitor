@@ -125,7 +125,8 @@ ec2-launch-monitor/
 │   ├── cleanup_ec2.sh                # Test resource cleanup
 │   ├── create_ec2.sh                 # Test instance creation
 │   ├── deploy.sh                     # Full stack deployment
-│   └── predeploy.sh                  # update lambda/static site code
+│   ├── predeploy.sh                  # Update lambda/static site code
+│   └── prereqs.sh                    # Initial setup and S3 bucket creation
 └── README.md                         # This documentation
 ```
 
@@ -142,4 +143,90 @@ The dashboard displays:
 ---
 
 *This documentation reflects the current state of the feature/reviewboard branch implementation.*
+
+## Setup Requirements
+
+Before deploying this project, you must configure the following values for your environment:
+
+### Prerequisites
+
+#### S3 Bucket for Lambda Code
+The system requires an S3 bucket to store the Lambda deployment package. The `prereqs.sh` script will automatically handle this setup:
+
+1. **Run Prerequisites Script**: `./tasks/prereqs.sh` will create the S3 bucket and upload Lambda code
+2. **Configuration Required**: Ensure `config.env` contains your `LAMBDA_CODE_BUCKET` name
+3. **Automatic Packaging**: The script packages and uploads the Lambda function automatically
+
+**Note**: The prereqs script must be run before deploying the CloudFormation stack, as it creates the S3 bucket and uploads the Lambda code that CloudFormation references.
+
+### Configuration File Setup
+
+1. **Copy Configuration Template**: 
+   ```bash
+   cp config.env config.env.local
+   ```
+
+2. **Update Variables**: Edit `config.env` with your environment-specific values:
+   - `AWS_REGION`: Your target AWS region
+   - `LAMBDA_CODE_BUCKET`: Your S3 bucket for Lambda code storage
+   - `ALLOWED_IP_ADDRESS`: Your IP address for dashboard access
+   - `STACK_NAME`: CloudFormation stack name (optional)
+
+### 1. IP Address Configuration
+- **Variable**: `ALLOWED_IP_ADDRESS` in `config.env`
+- **Change**: Replace `0.0.0.0/0` with your actual IP address (e.g., `203.0.113.0/32`)
+- **Purpose**: Restricts dashboard access to your IP only
+
+### 2. S3 Bucket Names
+- **Variable**: `LAMBDA_CODE_BUCKET` in `config.env`
+- **Change**: Replace `ec2-launch-monitor-code` with your unique S3 bucket name
+- **Purpose**: Stores Lambda deployment packages
+
+### 3. AWS Region
+- **Variable**: `AWS_REGION` in `config.env`
+- **Change**: Replace `us-east-2` with your preferred AWS region
+- **Purpose**: Ensures all resources deploy to your target region
+
+### 4. AWS CLI Configuration
+Ensure your AWS CLI is configured with appropriate permissions for:
+- CloudFormation (create/update stacks)
+- Lambda (create/update functions)
+- S3 (create buckets, upload objects)
+- EC2 (describe instances)
+- IAM (create roles and policies)
+
+### Deployment Steps
+
+1. **Run Prerequisites Setup**:
+   ```bash
+   ./tasks/prereqs.sh
+   ```
+   This will:
+   - Create the S3 bucket for Lambda code storage
+   - Package the Lambda function code
+   - Upload the Lambda package to S3
+
+2. **Configure Environment** (if not done yet):
+   ```bash
+   cp config.env config.env.local
+   # Edit config.env.local with your values
+   ```
+
+3. **Deploy Infrastructure**:
+   ```bash
+   ./tasks/deploy.sh
+   ```
+
+4. **Test the System**:
+   ```bash
+   ./tasks/create_ec2.sh    # Create test instances
+   ./tasks/check_s3.sh      # Verify reports generated
+   ```
+
+### Updating Lambda Code
+
+After initial deployment, use the predeploy script to update Lambda code:
+```bash
+./tasks/predeploy.sh      # Update Lambda function and static files
+```
 

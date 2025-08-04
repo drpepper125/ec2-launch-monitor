@@ -1,9 +1,24 @@
  #!/bin/bash
 
-bucket_name="ec2-launch-monitor-code"
-region="us-east-2"
+# Load configuration
+if [ -f "config.env" ]; then
+    source config.env
+    echo "Loaded configuration from config.env"
+else
+    echo "Warning: config.env not found. Using default values."
+    AWS_REGION="us-east-2"
+    LAMBDA_CODE_BUCKET="ec2-launch-monitor-code"
+    STACK_NAME="ec2-launch-monitor"
+fi
+
+bucket_name="$LAMBDA_CODE_BUCKET"
+region="$AWS_REGION"
 path_to_lambda="lambda/index.py"
 lambda_function_name="ec2-launch-monitor"
+
+echo "Using configuration:"
+echo "Region: $region"
+echo "Lambda Code Bucket: $bucket_name"
 
 #compressing the lambda code to zip format
 echo "Compressing Lambda code..."

@@ -1,5 +1,15 @@
 #!/bin/bash
 
+# Load configuration
+if [ -f "config.env" ]; then
+    source config.env
+    echo "Loaded configuration from config.env"
+else
+    echo "Warning: config.env not found. Using default values."
+    AWS_REGION="us-east-2"
+    STACK_NAME="ec2-launch-monitor"
+fi
+
 # Check S3 bucket for CSV reports
 # This script retrieves the S3 bucket name from CloudFormation outputs and lists CSV reports
 
@@ -7,8 +17,8 @@ echo "📊 Checking S3 bucket for CSV reports..."
 
 # Get the bucket name from CloudFormation stack outputs
 BUCKET_NAME=$(aws cloudformation describe-stacks \
-    --stack-name ec2-launch-monitor \
-    --region us-east-2 \
+    --stack-name $STACK_NAME \
+    --region $AWS_REGION \
     --query 'Stacks[0].Outputs[?OutputKey==`ReportsBucketName`].OutputValue' \
     --output text 2>/dev/null)
 
