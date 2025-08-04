@@ -11,22 +11,51 @@ Parameters:
     Description: 'S3 key for the Lambda function zip file'
     Default: 'lambda-code.zip'
 
+  AllowedIPAddress:
+    Type: String
+    Description: 'Your IP address to allow access (e.g., 203.0.113.0/32)'
+    Default: '107.218.255.235/32'
+  
+
 Resources:
-  # S3 Bucket for CSV Reports
-  EC2ReportsBucket:
+  # S3 bucket for static review board files AND CSV reports
+  StaticReviewBoardBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub 'ec2-launch-reports-${AWS::AccountId}-${AWS::Region}'
+      BucketName: !Sub 'static-review-board-${AWS::AccountId}-${AWS::Region}'
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
       PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
       LifecycleConfiguration:
         Rules:
           - Id: DeleteOldReports
             Status: Enabled
             ExpirationInDays: 90  # Keep reports for 90 days
+            Prefix: data/  # Only delete files in data/ folder
+        
+  # Bucket policy to allow public read access for static website
+  StaticReviewBoardBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DependsOn: StaticReviewBoardBucket
+    Properties:
+      Bucket: !Ref StaticReviewBoardBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: RestrictToSpecificIP
+            Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub 'arn:aws:s3:::${StaticReviewBoardBucket}/*'
+            Condition:
+              IpAddress:
+                aws:SourceIp: !Ref AllowedIPAddress
+        
 
   # IAM Role for Lambda Function
   LambdaExecutionRole:
@@ -62,7 +91,7 @@ Resources:
                   - s3:PutObject
                   - s3:PutObjectAcl
                   - s3:GetObject
-                Resource: !Sub 'arn:aws:s3:::ec2-launch-reports-${AWS::AccountId}-${AWS::Region}/*'
+                Resource: !Sub 'arn:aws:s3:::static-review-board-${AWS::AccountId}-${AWS::Region}/*'
 
   # Lambda Function
   EC2LaunchMonitorFunction:
@@ -79,7 +108,7 @@ Resources:
       Timeout: 60
       Environment:
         Variables:
-          REPORTS_BUCKET: !Ref EC2ReportsBucket
+          REPORTS_BUCKET: !Ref StaticReviewBoardBucket
 
   # CloudWatch Events Rule to detect EC2 launches
   EC2LaunchRule:
@@ -130,8 +159,14 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-IAMRoleArn'
 
-  ReportsBucketName:
-    Description: 'Name of the S3 bucket storing CSV reports'
-    Value: !Ref EC2ReportsBucket
+  StaticReviewBoardBucketName:
+    Description: 'Name of the S3 bucket for static website and CSV reports'
+    Value: !Ref StaticReviewBoardBucket
     Export:
-      Name: !Sub '${AWS::StackName}-ReportsBucket'
+      Name: !Sub '${AWS::StackName}-StaticReviewBoardBucket'
+      
+  StaticWebsiteURL:
+    Description: 'URL of the private static review board website (IP restricted)'
+    Value: !Sub 'http://${StaticReviewBoardBucket}.s3-website-${AWS::Region}.amazonaws.com'
+    Export:
+      Name: !Sub '${AWS::StackName}-WebsiteURL'
