@@ -17,11 +17,7 @@ The solution employs a fully serverless architecture built on AWS services, prov
 
 ## Operational Flow
 
-```
-EC2 Launch Event → CloudWatch Events → Lambda Function → S3 Report Storage
-                                          ↓
-Static Dashboard ← S3 Website Hosting ← Compliance Reports (CSV)
-```
+![EC2 Launch Monitor Architecture](images/arch.png)
 
 ### Event Processing Pipeline
 
@@ -129,7 +125,7 @@ ec2-launch-monitor/
 │   ├── cleanup_ec2.sh                # Test resource cleanup
 │   ├── create_ec2.sh                 # Test instance creation
 │   ├── deploy.sh                     # Full stack deployment
-│   └── predeploy.sh                  # Deployment automation
+│   └── predeploy.sh                  # update lambda/static site code
 └── README.md                         # This documentation
 ```
 
