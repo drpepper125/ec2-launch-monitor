@@ -1,0 +1,72 @@
+/* Simple, clean styling for server compliance table */
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f5f5f5;
+}
+
+.container {
+    max-width: 100%;
+    width: 95%;
+    margin: 0 auto;
+    background-color: white;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    overflow-x: auto;
+}
+
+#table-container {
+    overflow-x: auto;
+    margin-top: 20px;
+}
+
+h1 {
+    color: #333;
+    margin-bottom: 10px;
+}
+
+p {
+    color: #666;
+    margin-bottom: 20px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+th, td {
+    padding: 12px 8px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+th {
+    background-color: #f8f9fa;
+    font-weight: bold;
+    color: #333;
+}
+
+tr:hover {
+    background-color: #f5f5f5;
+}
+
+/* Status badges */
+.status-running {
+    color: #28a745;
+    font-weight: bold;
+}
+
+.status-stopped {
+    color: #dc3545;
+    font-weight: bold;
+}
+
+.status-pending {
+    color: #ffc107;
+    font-weight: bold;
+}
