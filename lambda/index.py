@@ -37,13 +37,13 @@ def extract_event_details(event: Dict[str, Any]) -> List[str]:
 def process_tagged_instances(instance_ids: List[str]) -> Dict[str, Any]:
     """
     Process all instances in a single pass - check tags and return tagged instances.
-    Returns instance IDs and private IPs for instances with the required tag.
+    Returns comprehensive instance information for instances with the required tag.
     """
     tag_key = 'adhoc'
     tag_value = 'true'
     
     result = {
-        'tagged_instances': {},  # {instance_id: private_ip}
+        'tagged_instances': {},  # {instance_id: instance_details}
         'summary': {
             'total_processed': 0,
             'tagged_count': 0,
@@ -61,7 +61,6 @@ def process_tagged_instances(instance_ids: List[str]) -> Dict[str, Any]:
         for reservation in response.get('Reservations', []):
             for instance in reservation.get('Instances', []):
                 instance_id = instance['InstanceId']
-                private_ip = instance.get('PrivateIpAddress', 'N/A')
                 tags = instance.get('Tags', [])
                 
                 result['summary']['total_processed'] += 1
@@ -73,11 +72,26 @@ def process_tagged_instances(instance_ids: List[str]) -> Dict[str, Any]:
                 )
                 
                 if has_required_tag:
-                    # Store tagged instance: ID -> Private IP
-                    result['tagged_instances'][instance_id] = private_ip
+                    # Collect comprehensive instance information
+                    instance_details = {
+                        'instance_id': instance_id,
+                        'private_ip': instance.get('PrivateIpAddress', 'N/A'),
+                        'public_ip': instance.get('PublicIpAddress', 'N/A'),
+                        'instance_type': instance.get('InstanceType', 'Unknown'),
+                        'state': instance.get('State', {}).get('Name', 'Unknown'),
+                        'launch_time': instance.get('LaunchTime').isoformat() if instance.get('LaunchTime') else 'N/A',
+                        'availability_zone': instance.get('Placement', {}).get('AvailabilityZone', 'N/A'),
+                        'vpc_id': instance.get('VpcId', 'N/A'),
+                        'subnet_id': instance.get('SubnetId', 'N/A'),
+                        'security_groups': [sg['GroupName'] for sg in instance.get('SecurityGroups', [])],
+                        'key_name': instance.get('KeyName', 'N/A'),
+                        'tags': {tag['Key']: tag['Value'] for tag in tags}
+                    }
+                    
+                    result['tagged_instances'][instance_id] = instance_details
                     result['summary']['tagged_count'] += 1
                     
-                    logger.info(f"Found tagged instance {instance_id} with IP {private_ip}")
+                    logger.info(f"Found tagged instance {instance_id} ({instance_details['instance_type']}) with IP {instance_details['private_ip']}")
                 else:
                     result['summary']['untagged_count'] += 1
                     logger.debug(f"Skipped untagged instance {instance_id}")
@@ -89,16 +103,16 @@ def process_tagged_instances(instance_ids: List[str]) -> Dict[str, Any]:
         logger.error(f"Error processing instances: {e}")
         return result
 
-def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def process_ec2_launch_event(event: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Main Lambda handler for processing EC2 launch events.
+    Core business logic for processing EC2 launch events.
+    This function can be reused by other components (future Lambda functions, tests, etc.)
     
     Args:
         event: CloudWatch Events data containing EC2 launch information
-        context: Lambda runtime context (unused)
         
     Returns:
-        Dict containing status code and response body with instance details
+        Dict with status, message, and processed instance data
     """
     logger.info(f"Processing EC2 launch event from account: {get_account_id()}")
     
@@ -107,12 +121,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     if not instance_ids:
         logger.warning("No instance IDs found in event")
         return {
-            'statusCode': 400,
-            'body': json.dumps({
-                'error': 'No instance IDs found in event',
-                'instance_ids': [],
-                'tagged_instances': {}
-            })
+            'status': 'error',
+            'error': 'No instance IDs found in event',
+            'instance_ids': [],
+            'tagged_instances': {},
+            'summary': {'total_processed': 0, 'tagged_count': 0, 'untagged_count': 0}
         }
     
     logger.info(f"Processing {len(instance_ids)} instances: {instance_ids}")
@@ -124,24 +137,53 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     if processing_result['summary']['tagged_count'] == 0:
         logger.warning("No instances found with required tags")
         return {
-            'statusCode': 404,
-            'body': json.dumps({
-                'error': 'No instances found with required adhoc=true tag',
-                'summary': processing_result['summary']
-            })
+            'status': 'no_matches',
+            'error': 'No instances found with required adhoc=true tag',
+            'summary': processing_result['summary'],
+            'tagged_instances': {}
         }
     
-    # Prepare response with all the processed data
-    response_body = {
+    # Prepare successful response with all the processed data
+    response_data = {
+        'status': 'success',
         'message': f"Successfully processed {processing_result['summary']['total_processed']} instances, found {processing_result['summary']['tagged_count']} with required tags",
         'account_id': get_account_id(),
         'summary': processing_result['summary'],
         'tagged_instances': processing_result['tagged_instances']
     }
     
-    logger.info(f"Successfully processed event: {json.dumps(response_body)}")
+    # Log summary instead of full response to avoid log bloat
+    logger.info(f"Successfully processed event - Account: {response_data['account_id']}, "
+               f"Found {processing_result['summary']['tagged_count']} tagged instances: "
+               f"{list(processing_result['tagged_instances'].keys())}")
+    
+    return response_data
+
+def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    """
+    Lambda handler - thin wrapper around business logic.
+    Handles Lambda-specific response formatting.
+    
+    Args:
+        event: CloudWatch Events data containing EC2 launch information
+        context: Lambda runtime context (unused)
+        
+    Returns:
+        Dict containing status code and response body with instance details
+    """
+    # Call the core business logic
+    result = process_ec2_launch_event(event)
+    
+    # Map business logic status to HTTP status codes
+    status_code_map = {
+        'success': 200,
+        'error': 400,
+        'no_matches': 404
+    }
+    
+    status_code = status_code_map.get(result['status'], 500)
     
     return {
-        'statusCode': 200,
-        'body': json.dumps(response_body)
+        'statusCode': status_code,
+        'body': json.dumps(result)
     }

@@ -2,6 +2,21 @@
 config.ts
 event-pattern.json
 
+# Lambda deployment artifacts
+lambda-deployment-package.zip
+deployment/
+
+# Generated CSV files (may contain sensitive instance data)
+instances.csv
+instance-*.csv
+ec2-report-*.csv
+*.csv
+
+# JSON response files (contain instance details, IPs, tags)
+*response*.json
+mock_response_data.json
+multiple_instances_response.json
+
 # Dependencies
 node_modules/
 package-lock.json
@@ -25,6 +40,15 @@ cdk.context.json
 .env.development.local
 .env.test.local
 .env.production.local
+
+# AWS credentials and config
+.aws/
+aws-credentials.json
+credentials.json
+
+# CloudFormation outputs (may contain resource ARNs)
+stack-outputs.json
+cfn-outputs.json
 
 # IDE and editor files
 .vscode/
