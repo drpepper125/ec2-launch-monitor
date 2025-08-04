@@ -7,7 +7,7 @@ CODE_KEY="lambda-code.zip"                  # Replace if you use a different fil
 
 #aws cloudformation deploy command
 aws cloudformation deploy \
-    --template-file cloudformation-clean.yaml \
+    --template-file cf-template/cloudformation-clean.yaml \
     --stack-name ec2-launch-monitor \
     --capabilities CAPABILITY_IAM \
     --region us-east-2 \

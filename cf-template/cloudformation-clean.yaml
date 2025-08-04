@@ -12,6 +12,22 @@ Parameters:
     Default: 'lambda-code.zip'
 
 Resources:
+  # S3 Bucket for CSV Reports
+  EC2ReportsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'ec2-launch-reports-${AWS::AccountId}-${AWS::Region}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldReports
+            Status: Enabled
+            ExpirationInDays: 90  # Keep reports for 90 days
+
   # IAM Role for Lambda Function
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -41,6 +57,12 @@ Resources:
                   - ec2:DescribeRegions
                   - ec2:DescribeAvailabilityZones
                 Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                  - s3:GetObject
+                Resource: !Sub 'arn:aws:s3:::ec2-launch-reports-${AWS::AccountId}-${AWS::Region}/*'
 
   # Lambda Function
   EC2LaunchMonitorFunction:
@@ -55,6 +77,9 @@ Resources:
         S3Key: !Ref LambdaCodeKey
       Description: 'Monitors EC2 instance launches and processes events'
       Timeout: 60
+      Environment:
+        Variables:
+          REPORTS_BUCKET: !Ref EC2ReportsBucket
 
   # CloudWatch Events Rule to detect EC2 launches
   EC2LaunchRule:
@@ -104,3 +129,9 @@ Outputs:
     Value: !GetAtt LambdaExecutionRole.Arn
     Export:
       Name: !Sub '${AWS::StackName}-IAMRoleArn'
+
+  ReportsBucketName:
+    Description: 'Name of the S3 bucket storing CSV reports'
+    Value: !Ref EC2ReportsBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-ReportsBucket'
