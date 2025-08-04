@@ -141,10 +141,9 @@ def store_to_s3_csv(response_data: Dict[str, Any]) -> Optional[str]:
             
             instances_data.append(instance_record)
         
-        # Generate daily S3 key (one file per day)
+        # Generate daily S3 key (one file per day) - store in ec2-launch-reports/YYYY/MM/ folder
         timestamp = datetime.utcnow()
-        account_id = response_data.get('account_id', 'unknown')
-        s3_key = f"ec2-launch-reports/{timestamp.year}/{timestamp.month:02d}/ec2-instances-{account_id}-{timestamp.strftime('%Y-%m-%d')}.csv"
+        s3_key = f"ec2-launch-reports/{timestamp.year}/{timestamp.month:02d}/ec2-instances-{timestamp.strftime('%Y-%m-%d')}.csv"
         
         # Check if daily file already exists
         existing_csv_content = ""
@@ -197,7 +196,7 @@ def store_to_s3_csv(response_data: Dict[str, Any]) -> Optional[str]:
             Body=csv_buffer.getvalue(),
             ContentType='text/csv',
             Metadata={
-                'account_id': account_id,
+                'account_id': response_data.get('account_id', 'unknown'),
                 'report_type': 'ec2_launch_monitor_daily',
                 'last_updated': timestamp.isoformat(),
                 'total_instances_added': str(len(instances_data))
