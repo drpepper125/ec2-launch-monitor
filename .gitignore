@@ -24,7 +24,6 @@ package-lock.json
 
 # Build outputs
 dist/
-*.js
 *.js.map
 *.d.ts
 
